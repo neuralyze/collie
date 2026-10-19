@@ -3542,7 +3542,6 @@ export function AgentChat({
           <OutputZoom
             text={text}
             logicalText={logicalText}
-            wrap={prefs.wrap}
             fontSize={prefs.fontSize}
             agent={agent?.agent}
             nativeMirror={mirrorOverride}
