@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Layers, ListTree, Undo2, X } from "lucide-react";
+import { Layers, ListTree, Undo2, X, ZoomIn } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -186,7 +186,8 @@ const OFF = "text-muted-foreground";
  * left of the mark, 6px apart (the belt's one pill gap): 117 + 32 + 6 = 155, see
  * {@link SWITCH_PILL_INSET_WITH_CHANGES}. WITH THE COMPOSER'S X (M40 spec 04) a third pill stands
  * left of both while the phone's box holds a draft: 155 + 32 + 6 = 193, see
- * {@link SWITCH_PILL_INSET_WITH_CLEAR}.
+ * {@link SWITCH_PILL_INSET_WITH_CLEAR}. WITH THE ZOOM PILL as well, a fourth: 193 + 32 + 6 = 231, see
+ * {@link SWITCH_PILL_INSET_FOUR}.
  *
  * THIS NUMBER IS NO LONGER THE ANSWER — IT IS THE GUESS BEFORE ONE EXISTS. A constant here drifts
  * the moment the Switch block's own box changes (a locale with a wider glyph, a future word back on
@@ -208,15 +209,25 @@ const SWITCH_PILL_INSET_WITH_CHANGES = 155;
  *  Changes pill and the mark. 155 + 32 (the X) + 6 (its gap) = 193. */
 const SWITCH_PILL_INSET_WITH_CLEAR = 193;
 
-/** The three constants above, indexed by how many pills the block holds, less one. */
-const SWITCH_PILL_INSETS = [SWITCH_PILL_INSET, SWITCH_PILL_INSET_WITH_CHANGES, SWITCH_PILL_INSET_WITH_CLEAR] as const;
+/** The first-frame fallback with all FOUR pinned pills: the X, Changes, Zoom and the mark. 193 + 32
+ *  (the Zoom pill) + 6 (its gap) = 231. */
+const SWITCH_PILL_INSET_FOUR = 231;
+
+/** The four constants above, indexed by how many pills the block holds, less one. */
+const SWITCH_PILL_INSETS = [
+  SWITCH_PILL_INSET,
+  SWITCH_PILL_INSET_WITH_CHANGES,
+  SWITCH_PILL_INSET_WITH_CLEAR,
+  SWITCH_PILL_INSET_FOUR,
+] as const;
 
 /**
- * The first-frame fallback AT A BELT SCALE, for a block holding `pills` pinned pills (1 to 3). The
- * three constants above are the scale-1 arithmetic; only the icon-only pills grow with `--belt-scale`
+ * The first-frame fallback AT A BELT SCALE, for a block holding `pills` pinned pills (1 to 4). The
+ * four constants above are the scale-1 arithmetic; only the icon-only pills grow with `--belt-scale`
  * (the hairline, the gaps, `pr-3` and the 64px fade do not), so each 32 in them becomes
  * `--belt-pill`, the same `round(2rem * scale)` index.css uses. Default scale 1.15: 85 + 37 = 122
- * for one pill, 85 + 37 + 6 + 37 = 165 for two, 85 + 3 × 37 + 2 × 6 = 208 for three.
+ * for one pill, 85 + 37 + 6 + 37 = 165 for two, 85 + 3 × 37 + 2 × 6 = 208 for three, 85 + 4 × 37 +
+ * 3 × 6 = 251 for four.
  */
 export function switchPillInset(scale: number, pills: number): number {
   const count = Math.min(Math.max(Math.round(pills), 1), SWITCH_PILL_INSETS.length);
@@ -437,6 +448,18 @@ export interface ActionsRowProps {
     label: string;
   };
   /**
+   * THE OUTPUT, ZOOMED (components/output-zoom.tsx): an icon-only pill DIRECTLY LEFT of the Switch
+   * mark, so the two controls that LEAVE the composer for another view of the pane stand together at
+   * the pinned end. It navigates (`/pane/:id/zoom`), so no `aria-haspopup`. Absent on a pane with no
+   * screen, where there is nothing to zoom.
+   */
+  zoom?: {
+    /** Opens the zoomed output for this pane. */
+    onClick: () => void;
+    /** ALREADY TRANSLATED. The button's accessible name, `zoom.open` ("Zoom output"). */
+    label: string;
+  };
+  /**
    * THE COMPOSER'S CLEAR SLOT (M40 spec 04, issue #291; Altan, 2026-09-26/27). An icon-only X on
    * the pinned block, directly LEFT of the Changes pill, left of the Switch mark when there is no
    * Changes pill, alone when neither shows. The scrolling pills are for acts inside the terminal;
@@ -473,14 +496,14 @@ export interface ActionsRowProps {
   };
 }
 
-export function ActionsRow({ general, agent, mine, onRun, disabled, durable, hand = "right", handle, changes, clear }: ActionsRowProps) {
+export function ActionsRow({ general, agent, mine, onRun, disabled, durable, hand = "right", handle, changes, zoom, clear }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
   const { beltScale } = useDashPrefs().prefs;
-  // Anything pinned at the pinned end (right, or left under `hand="left"`): the composer's X, the Changes pill, the Switch mark, in any
-  // mix. The drag surface (`handle.ref`, `touch-pan-x`) stays tied to `handle` alone.
-  const pinnedCount = (clear ? 1 : 0) + (changes ? 1 : 0) + (handle ? 1 : 0);
+  // Anything pinned at the pinned end (right, or left under `hand="left"`): the composer's X, the Changes pill, the Zoom pill, the
+  // Switch mark, in any mix. The drag surface (`handle.ref`, `touch-pan-x`) stays tied to `handle` alone.
+  const pinnedCount = (clear ? 1 : 0) + (changes ? 1 : 0) + (zoom ? 1 : 0) + (handle ? 1 : 0);
   const pinned = pinnedCount > 0;
   const switchBlock = useSwitchBlockWidth(pinned);
   const switchInset = switchBlock.width ?? switchPillInset(beltScale, pinnedCount);
@@ -777,9 +800,23 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 onClick={changes.onClick}
                 // `PINNED_PILL` below, and a hit box set by where the pill stands (`pinnedReach`):
                 // 7px out on an end of the block, 3px toward a neighbour, so two reaches never meet.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !handle, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !zoom && !handle, hand))}
               >
                 <ListTree className={cn(BELT_ICON, "text-primary")} />
+              </Button>
+            )}
+            {/* THE OUTPUT, ZOOMED: the `zoom` prop above. Same box and tap feedback as the pills
+                beside it; it stands directly left of the Switch mark. */}
+            {zoom && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={zoom.label}
+                onClick={zoom.onClick}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !changes, !handle, hand))}
+              >
+                <ZoomIn className={cn(BELT_ICON, "text-primary")} />
               </Button>
             )}
             {handle && (
@@ -801,7 +838,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 // square with the pill's own scaled height, 37px at the default scale. Its hit box
                 // reaches 3px left (half the 6px gap to a pill beside it, 7px when it stands alone)
                 // and 7px right (into `pr-3`), 47px across.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !changes, true, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !changes && !zoom, true, hand))}
               >
                 <Layers className={cn(BELT_ICON, "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed

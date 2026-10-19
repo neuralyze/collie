@@ -194,6 +194,10 @@ interface ComposerProps {
    *  switcher mark (actions-row.tsx's `changes`). Absent when the pane reports no folder. */
   changesPill?: { onClick: () => void; label: string };
 
+  /** The output, zoomed: the Zoom pill on the belt's pinned block, directly left of the switcher
+   *  mark (actions-row.tsx's `zoom`). Absent where there is no screen to zoom. */
+  zoomPill?: { onClick: () => void; label: string };
+
   /**
    * The parent drew this pane from the on-device cache (M46 spec 10), so nothing it shows is proven
    * current. Together with a lapsed liveness stamp (lib/liveness.ts) it turns the SEND paths off while
@@ -339,7 +343,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
+  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, zoomPill, stale, hand = "right", screen },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1807,6 +1811,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.
           handle={pullHandle}
           changes={changesPill}
+          zoom={zoomPill}
           hand={hand}
           // The X on the pinned block while the box holds a draft, then Undo in its place until
           // the next act (M40 spec 04). See `clearSlot` for when it shows.
