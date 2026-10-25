@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRevalidator } from "react-router";
@@ -53,7 +53,6 @@ import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AgentStart } from "@/components/agent-start";
 import { AnsiOutput } from "@/components/ansi-output";
-import { OutputZoom } from "@/components/output-zoom";
 import { CardDock, hasDialogCard } from "@/components/card-dock";
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
@@ -148,6 +147,14 @@ import type {
 } from "@/lib/blocks";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import type { Scope } from "@/lib/scope";
+import { reloadOnChunkError } from "@/lib/chunk-reload";
+
+// The zoomed output is opened by a tap and read for a while, so its view and gesture maths load then
+// and stay out of the main bundle, which stands just under the service worker's 2 MiB precache cap
+// (a build over it fails). The worker still precaches the chunk, so it opens offline as before.
+const OutputZoom = lazy(() =>
+  reloadOnChunkError(() => import("@/components/output-zoom")).then((m) => ({ default: m.OutputZoom })),
+);
 
 interface AgentChatProps {
   paneId: string;
@@ -3447,17 +3454,19 @@ export function AgentChat({
             a reader who scrolled the mirror up still gets the pane as it is now. The grammars do not
             run there, so a dialog the dock lifted reads in place as the rows it was. */}
         {zoom?.open && !gridless && (
-          <OutputZoom
-            text={text}
-            logicalText={logicalText}
-            fontSize={prefs.fontSize}
-            agent={agent?.agent}
-            nativeMirror={mirrorOverride}
-            face={mirrorFace}
-            title={name}
-            hand={handOf(prefs)}
-            onClose={zoom.onClose}
-          />
+          <Suspense fallback={null}>
+            <OutputZoom
+              text={text}
+              logicalText={logicalText}
+              fontSize={prefs.fontSize}
+              agent={agent?.agent}
+              nativeMirror={mirrorOverride}
+              face={mirrorFace}
+              title={name}
+              hand={handOf(prefs)}
+              onClose={zoom.onClose}
+            />
+          </Suspense>
         )}
       </div>
     </CompactStripLabels>
